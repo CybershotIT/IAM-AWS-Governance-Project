@@ -1,0 +1,520 @@
+AWS IAM Governance Project: Least Privilege Access Control Demonstration
+📋 Project Overview
+
+This project demonstrates enterprise-grade identity and access management (IAM) governance in AWS by implementing least privilege access controls for an S3-based document management system. The architecture ensures users can only access resources specific to their team's function, containing potential security breaches and establishing a scalable permission model.
+
+Core Governance Principles Demonstrated:
+
+    Least privilege access control
+
+    Role-based access control (RBAC)
+
+    Defense in depth
+
+    Containment of blast radius
+
+    Auditability through resource tagging
+
+🏗️ Architecture
+text
+
+                    ┌─────────────────────────────────────┐
+                    │         S3 Bucket: governance-demo  │
+                    ├─────────────────────────────────────┤
+                    │  ┌──────────┐ ┌──────────┐ ┌─────┐ │
+                    │  │ finance/ │ │marketing/│ │ ... │ │
+                    │  └──────────┘ └──────────┘ └─────┘ │
+                    └─────────────────────────────────────┘
+                                    ▲
+                    ┌───────────────┴───────────────┐
+                    │                               │
+         ┌──────────┴──────────┐         ┌──────────┴──────────┐
+         │  FinanceTeam Group  │         │ MarketingTeam Group │
+         │  (Folder: finance/) │         │ (Folder: marketing/)│
+         └──────────┬──────────┘         └──────────┬──────────┘
+                    │                               │
+         ┌──────────┴──────────┐         ┌──────────┴──────────┐
+         │   finance-user      │         │   marketing-user    │
+         └─────────────────────┘         └─────────────────────┘
+
+📁 Repository Structure
+text
+
+aws-iam-governance-demo/
+├── README.md
+├── policies/
+│   ├── finance-team-policy.json
+│   ├── marketing-team-policy.json
+│   └── ec2-readonly-role-policy.json
+├── scp/
+│   └── preventive-guardrails-scp.json
+├── cloudformation/
+│   └── complete-governance-stack.yaml
+└── screenshots/
+    └── test-results/
+
+🔐 IAM Policies
+Policy 1: Finance Team Access (policies/finance-team-policy.json)
+json
+
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "AllowConsoleAccess",
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetBucketLocation",
+                "s3:ListAllMyBuckets"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "AllowListBucketWithPrefixRestriction",
+            "Effect": "Allow",
+            "Action": ["s3:ListBucket"],
+            "Resource": "arn:aws:s3:::governance-demo-bucket",
+            "Condition": {
+                "StringLike": {
+                    "s3:prefix": ["", "finance/*"]
+                }
+            }
+        },
+        {
+            "Sid": "AllowFinanceFolderFullAccess",
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:DeleteObject"
+            ],
+            "Resource": "arn:aws:s3:::governance-demo-bucket/finance/*"
+        },
+        {
+            "Sid": "ExplicitDenyOtherFolders",
+            "Effect": "Deny",
+            "Action": "s3:*",
+            "NotResource": [
+                "arn:aws:s3:::governance-demo-bucket",
+                "arn:aws:s3:::governance-demo-bucket/finance/*"
+            ]
+        }
+    ]
+}
+
+Policy 2: Marketing Team Access (policies/marketing-team-policy.json)
+json
+
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "AllowConsoleAccess",
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetBucketLocation",
+                "s3:ListAllMyBuckets"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "AllowListBucketWithPrefixRestriction",
+            "Effect": "Allow",
+            "Action": ["s3:ListBucket"],
+            "Resource": "arn:aws:s3:::governance-demo-bucket",
+            "Condition": {
+                "StringLike": {
+                    "s3:prefix": ["", "marketing/*"]
+                }
+            }
+        },
+        {
+            "Sid": "AllowMarketingFolderFullAccess",
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:DeleteObject"
+            ],
+            "Resource": "arn:aws:s3:::governance-demo-bucket/marketing/*"
+        },
+        {
+            "Sid": "ExplicitDenyOtherFolders",
+            "Effect": "Deny",
+            "Action": "s3:*",
+            "NotResource": [
+                "arn:aws:s3:::governance-demo-bucket",
+                "arn:aws:s3:::governance-demo-bucket/marketing/*"
+            ]
+        }
+    ]
+}
+
+Policy 3: EC2 Read-Only Role (policies/ec2-readonly-role-policy.json)
+json
+
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "AllowEC2ToListBuckets",
+            "Effect": "Allow",
+            "Action": [
+                "s3:ListBucket",
+                "s3:GetBucketLocation"
+            ],
+            "Resource": "arn:aws:s3:::governance-demo-bucket"
+        },
+        {
+            "Sid": "AllowEC2ReadOnlyAccess",
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetObject",
+                "s3:GetObjectVersion"
+            ],
+            "Resource": "arn:aws:s3:::governance-demo-bucket/*"
+        }
+    ]
+}
+
+🛡️ Service Control Policy (Preventive Governance)
+SCP: Preventive Guardrails (scp/preventive-guardrails-scp.json)
+json
+
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "DenyDisablingCloudTrail",
+            "Effect": "Deny",
+            "Action": [
+                "cloudtrail:DeleteTrail",
+                "cloudtrail:StopLogging",
+                "cloudtrail:UpdateTrail"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "EnforceS3Encryption",
+            "Effect": "Deny",
+            "Action": "s3:PutObject",
+            "Resource": "*",
+            "Condition": {
+                "StringNotEquals": {
+                    "s3:x-amz-server-side-encryption": "AES256"
+                }
+            }
+        },
+        {
+            "Sid": "DenyPublicS3Buckets",
+            "Effect": "Deny",
+            "Action": [
+                "s3:PutBucketAcl",
+                "s3:PutBucketPolicy"
+            ],
+            "Resource": "*",
+            "Condition": {
+                "StringEquals": {
+                    "s3:x-amz-acl": "public-read",
+                    "s3:ResourceAccount": "${aws:PrincipalAccount}"
+                }
+            }
+        }
+    ]
+}
+
+☁️ CloudFormation Template
+Complete Infrastructure as Code (cloudformation/complete-governance-stack.yaml)
+yaml
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'IAM Governance Demo: Least Privilege Access Control for S3'
+
+Parameters:
+  BucketName:
+    Type: String
+    Default: governance-demo-bucket
+    Description: Globally unique S3 bucket name
+
+Resources:
+  # S3 Bucket with Governance Tags
+  GovernanceBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: CostCenter
+          Value: R&D-Demo
+        - Key: Environment
+          Value: Demo
+        - Key: DataClassification
+          Value: Internal
+        - Key: Project
+          Value: IAM-Governance-Demo
+
+  # IAM Groups
+  FinanceTeamGroup:
+    Type: AWS::IAM::Group
+    Properties:
+      GroupName: FinanceTeam
+
+  MarketingTeamGroup:
+    Type: AWS::IAM::Group
+    Properties:
+      GroupName: MarketingTeam
+
+  # IAM Policies
+  FinanceTeamPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: FinanceFolderAccess
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowConsoleAccess
+            Effect: Allow
+            Action:
+              - s3:GetBucketLocation
+              - s3:ListAllMyBuckets
+            Resource: '*'
+          - Sid: AllowListBucketWithPrefixRestriction
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+            Resource: !Sub 'arn:aws:s3:::${GovernanceBucket}'
+            Condition:
+              StringLike:
+                s3:prefix: ['', 'finance/*']
+          - Sid: AllowFinanceFolderFullAccess
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+            Resource: !Sub 'arn:aws:s3:::${GovernanceBucket}/finance/*'
+          - Sid: ExplicitDenyOtherFolders
+            Effect: Deny
+            Action: 's3:*'
+            NotResource:
+              - !Sub 'arn:aws:s3:::${GovernanceBucket}'
+              - !Sub 'arn:aws:s3:::${GovernanceBucket}/finance/*'
+      Groups:
+        - !Ref FinanceTeamGroup
+
+  MarketingTeamPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: MarketingFolderAccess
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowConsoleAccess
+            Effect: Allow
+            Action:
+              - s3:GetBucketLocation
+              - s3:ListAllMyBuckets
+            Resource: '*'
+          - Sid: AllowListBucketWithPrefixRestriction
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+            Resource: !Sub 'arn:aws:s3:::${GovernanceBucket}'
+            Condition:
+              StringLike:
+                s3:prefix: ['', 'marketing/*']
+          - Sid: AllowMarketingFolderFullAccess
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+            Resource: !Sub 'arn:aws:s3:::${GovernanceBucket}/marketing/*'
+          - Sid: ExplicitDenyOtherFolders
+            Effect: Deny
+            Action: 's3:*'
+            NotResource:
+              - !Sub 'arn:aws:s3:::${GovernanceBucket}'
+              - !Sub 'arn:aws:s3:::${GovernanceBucket}/marketing/*'
+      Groups:
+        - !Ref MarketingTeamGroup
+
+  # IAM Users
+  FinanceUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: finance-user
+      Groups:
+        - !Ref FinanceTeamGroup
+      Tags:
+        - Key: Department
+          Value: Finance
+        - Key: AccessLevel
+          Value: Restricted
+
+  MarketingUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: marketing-user
+      Groups:
+        - !Ref MarketingTeamGroup
+      Tags:
+        - Key: Department
+          Value: Marketing
+        - Key: AccessLevel
+          Value: Restricted
+
+  # IAM Role for EC2
+  EC2S3ReadOnlyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: EC2-S3-ReadOnly-Role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: S3ReadOnlyAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:GetBucketLocation
+                Resource: !Sub 'arn:aws:s3:::${GovernanceBucket}'
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                Resource: !Sub 'arn:aws:s3:::${GovernanceBucket}/*'
+      Tags:
+        - Key: Purpose
+          Value: Demo-EC2-Access
+        - Key: Environment
+          Value: Demo
+
+Outputs:
+  BucketName:
+    Description: S3 Bucket Name
+    Value: !Ref GovernanceBucket
+  FinanceUserLogin:
+    Description: Finance User Login URL
+    Value: !Sub 'https://signin.aws.amazon.com/console'
+  MarketingUserLogin:
+    Description: Marketing User Login URL
+    Value: !Sub 'https://signin.aws.amazon.com/console'
+  EC2RoleARN:
+    Description: EC2 IAM Role ARN
+    Value: !GetAtt EC2S3ReadOnlyRole.Arn
+
+🧪 Test Scenarios & Validation
+Test Script (test-scripts/validate-permissions.sh)
+bash
+
+#!/bin/bash
+
+# Test script to validate IAM permissions
+BUCKET_NAME="governance-demo-bucket"
+
+echo "==================================="
+echo "TESTING FINANCE USER PERMISSIONS"
+echo "==================================="
+
+# Test 1: Finance user can access finance folder
+echo "Test 1: Listing finance/ folder..."
+aws s3 ls s3://$BUCKET_NAME/finance/ --profile finance-user
+if [ $? -eq 0 ]; then echo "✅ SUCCESS"; else echo "❌ FAILED"; fi
+
+# Test 2: Finance user CANNOT access marketing folder
+echo "Test 2: Attempting to list marketing/ folder..."
+aws s3 ls s3://$BUCKET_NAME/marketing/ --profile finance-user 2>&1
+if [ $? -ne 0 ]; then echo "✅ SUCCESS (Access Denied)"; else echo "❌ FAILED (Should be denied)"; fi
+
+# Test 3: Finance user can upload to finance folder
+echo "Test 3: Uploading test file to finance/..."
+echo "test content" > test-file.txt
+aws s3 cp test-file.txt s3://$BUCKET_NAME/finance/ --profile finance-user
+if [ $? -eq 0 ]; then echo "✅ SUCCESS"; else echo "❌ FAILED"; fi
+
+echo ""
+echo "==================================="
+echo "TESTING MARKETING USER PERMISSIONS"
+echo "==================================="
+
+# Test 4: Marketing user can access marketing folder
+echo "Test 4: Listing marketing/ folder..."
+aws s3 ls s3://$BUCKET_NAME/marketing/ --profile marketing-user
+if [ $? -eq 0 ]; then echo "✅ SUCCESS"; else echo "❌ FAILED"; fi
+
+# Test 5: Marketing user CANNOT access finance folder
+echo "Test 5: Attempting to list finance/ folder..."
+aws s3 ls s3://$BUCKET_NAME/finance/ --profile marketing-user 2>&1
+if [ $? -ne 0 ]; then echo "✅ SUCCESS (Access Denied)"; else echo "❌ FAILED (Should be denied)"; fi
+
+# Clean up
+rm test-file.txt
+
+📊 Key Governance Concepts Demonstrated
+Concept	Implementation	Business Value
+Least Privilege	Folder-scoped IAM policies	Limits blast radius of compromised credentials
+RBAC (Role-Based Access Control)	Group-based permission assignment	Scalable user management
+Defense in Depth	Explicit Deny statements + SCPs	Multiple layers of security
+Auditability	Resource tagging with CostCenter, Environment, DataClassification	Track costs, identify resource owners
+Preventive Controls	SCPs preventing encryption bypass	Enforce compliance automatically
+Separation of Duties	Different teams have different access paths	Prevents unauthorized access
+🚀 How to Deploy
+Option 1: Manual Deployment via Console
+
+    Create S3 bucket with folder structure
+
+    Create IAM groups
+
+    Create and attach policies
+
+    Create users and add to groups
+
+    Test permissions
+
+Option 2: Automated Deployment via CloudFormation
+bash
+
+aws cloudformation create-stack \
+  --stack-name iam-governance-demo \
+  --template-body file://cloudformation/complete-governance-stack.yaml \
+  --parameters ParameterKey=BucketName,ParameterValue=governance-demo-bucket-[unique-suffix] \
+  --capabilities CAPABILITY_NAMED_IAM
+
+🔍 Troubleshooting Guide
+Symptom	Likely Cause	Solution
+"Access Denied" when accessing folder	Incorrect path or condition	Verify s3:prefix condition matches folder name
+User can access unintended folders	Missing explicit Deny statements	Add NotResource Deny statements
+Grayed out prefix box in console	UI limitation or partial permissions	Use direct folder navigation or AWS CLI
+Policy Simulator shows unexpected results	Policy evaluation logic	Check for overlapping Allow/Deny statements
+📈 Skills Demonstrated
+
+    IAM Policy Writing (JSON, conditions, resources)
+
+    Least Privilege Design (Folder-level restrictions)
+
+    RBAC Implementation (Group-based permissions)
+
+    Infrastructure as Code (CloudFormation)
+
+    Security Testing (Policy validation)
+
+    Governance Best Practices (SCPs, tagging)
+
+    Troubleshooting (Using Policy Simulator)
+
+📝 Resume Summary Example
+
+    "Designed and implemented an AWS IAM governance framework demonstrating least privilege access controls, including folder-scoped S3 policies, role-based group management, and preventive SCP guardrails. Validated security controls through comprehensive testing, containing potential breach impact and establishing scalable permission management aligned with enterprise compliance requirements."
+
